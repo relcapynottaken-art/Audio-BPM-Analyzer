@@ -1,0 +1,2294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tempo — BPM Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   DESIGN TOKENS
+   ============================================================ */
+:root {
+  --bg-0: #0c0d0f;
+  --bg-1: #111317;
+  --bg-2: #181b20;
+  --bg-3: #1f2229;
+  --bg-4: #252930;
+
+  --border-subtle:  rgba(255,255,255,0.05);
+  --border-default: rgba(255,255,255,0.09);
+  --border-strong:  rgba(255,255,255,0.15);
+  --border-focus:   rgba(255,255,255,0.22);
+
+  --text-primary:   #e9eaec;
+  --text-secondary: #9ea3aa;
+  --text-tertiary:  #676c74;
+  --text-quaternary:#44484f;
+
+  --accent:         #7aa2c7;
+  --accent-dim:     rgba(122,162,199,0.10);
+  --accent-border:  rgba(122,162,199,0.25);
+  --accent-strong:  #93b8d9;
+
+  --error:          #d98070;
+  --error-dim:      rgba(217,128,112,0.08);
+  --error-border:   rgba(217,128,112,0.22);
+
+  /* Dead As Disco palette — dusty rose, never neon */
+  --disco:          #c47a9a;
+  --disco-dim:      rgba(196,122,154,0.09);
+  --disco-border:   rgba(196,122,154,0.26);
+  --disco-strong:   #d490b0;
+  --disco-beat:     rgba(212,132,168,0.70);
+  --disco-beat-bar: rgba(212,132,168,0.06);
+  --disco-down:     rgba(212,132,168,0.90);  /* downbeat = slightly brighter */
+
+  --font-sans: 'Geist', -apple-system, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
+
+  --ease-out:    cubic-bezier(0.16,1,0.3,1);
+  --ease-spring: cubic-bezier(0.34,1.56,0.64,1);
+}
+
+/* ============================================================
+   RESET + BASE
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  min-height: 100%;
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-feature-settings: "ss01","cv11";
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.006em;
+  line-height: 1.5;
+}
+
+/* Ambient vignette — very subtle top-center glow */
+body::before {
+  content: "";
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 40% at 50% -10%, rgba(122,162,199,0.04), transparent);
+}
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+.app {
+  position: relative; z-index: 1;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 56px 32px 96px;
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 48px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.brand { display: flex; align-items: center; gap: 10px; }
+
+.brand-glyph {
+  width: 26px; height: 26px;
+  border-radius: 5px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-default);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.brand-glyph svg { width: 13px; height: 13px; color: var(--text-secondary); }
+
+.brand-name {
+  font-size: 15px; font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+.brand-version {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-quaternary);
+  letter-spacing: 0.04em;
+  background: var(--bg-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+.header-right {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-quaternary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ============================================================
+   DROP ZONE
+   ============================================================ */
+.drop-zone {
+  position: relative;
+  border: 1px dashed var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-1);
+  padding: 52px 32px;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 220ms var(--ease-out),
+    background   220ms var(--ease-out),
+    transform    260ms var(--ease-spring);
+  user-select: none;
+}
+.drop-zone:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-2);
+}
+.drop-zone.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  transform: scale(1.006);
+}
+.drop-zone.has-file {
+  padding: 18px 24px;
+  display: flex; align-items: center;
+  justify-content: space-between;
+  border-style: solid;
+  border-color: var(--border-default);
+  cursor: default;
+}
+.drop-zone.has-file:hover { background: var(--bg-1); border-color: var(--border-default); }
+
+.drop-zone input[type="file"] { display: none; }
+
+/* Empty state */
+.drop-empty { pointer-events: none; }
+.drop-upload-icon {
+  width: 32px; height: 32px;
+  margin: 0 auto 14px;
+  color: var(--text-quaternary);
+  transition: color 220ms var(--ease-out), transform 260ms var(--ease-spring);
+}
+.drop-zone:hover .drop-upload-icon,
+.drop-zone.drag-over .drop-upload-icon {
+  color: var(--accent);
+  transform: translateY(-3px);
+}
+.drop-title {
+  font-size: 14px; font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 5px;
+}
+.drop-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.03em;
+}
+
+/* Loaded state */
+.file-info { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+.file-thumb {
+  flex-shrink: 0;
+  width: 34px; height: 34px; border-radius: 5px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-default);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary);
+}
+.file-thumb svg { width: 15px; height: 15px; }
+.file-meta { min-width: 0; flex: 1; }
+.file-name {
+  font-size: 13px; font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-bottom: 1px;
+}
+.file-detail {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.02em;
+}
+.file-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 5px;
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 160ms var(--ease-out);
+}
+.btn:hover:not(:disabled) {
+  background: var(--bg-3);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.btn:active:not(:disabled) { transform: scale(0.97); }
+.btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn svg { width: 12px; height: 12px; }
+
+.btn-icon {
+  padding: 0;
+  width: 34px; height: 34px;
+  flex-shrink: 0;
+}
+.btn-icon svg { width: 13px; height: 13px; }
+
+.btn-primary {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--bg-0);
+}
+.btn-primary:hover:not(:disabled) {
+  background: #fff;
+  border-color: #fff;
+  color: var(--bg-0);
+}
+
+/* ============================================================
+   ERROR BANNER
+   ============================================================ */
+.error-banner {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 12px;
+  padding: 11px 15px;
+  border: 1px solid var(--error-border);
+  background: var(--error-dim);
+  border-radius: 5px;
+  color: var(--error);
+  font-size: 12px;
+  animation: slide-in 240ms var(--ease-out);
+}
+.error-banner svg { width: 13px; height: 13px; flex-shrink: 0; }
+
+/* ============================================================
+   MAIN PANEL
+   ============================================================ */
+.panel {
+  margin-top: 20px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition:
+    opacity 320ms var(--ease-out),
+    transform 320ms var(--ease-out);
+}
+.panel.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+/* ── Loading state ── */
+.loading-state {
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column;
+  gap: 14px;
+  padding: 72px 24px;
+}
+.loading-spinner {
+  width: 20px; height: 20px;
+  border: 1.5px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 640ms linear infinite;
+}
+.loading-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.loading-progress {
+  width: 160px; height: 2px;
+  background: var(--bg-3);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.loading-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 1px;
+  width: 0%;
+  transition: width 200ms var(--ease-out);
+}
+
+/* ── Stat row ── */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.stat-cell {
+  padding: 20px 24px;
+  position: relative;
+}
+.stat-cell + .stat-cell { border-left: 1px solid var(--border-subtle); }
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 9px; font-weight: 500;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-quaternary);
+  margin-bottom: 8px;
+}
+.stat-value {
+  font-family: var(--font-mono);
+  font-size: 28px; font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  line-height: 1;
+  display: flex; align-items: baseline; gap: 5px;
+}
+.stat-unit {
+  font-size: 11px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.stat-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-quaternary);
+  margin-top: 5px;
+  letter-spacing: 0.02em;
+}
+
+/* ============================================================
+   WAVEFORM CANVAS REGION
+   ============================================================ */
+.waveform-region {
+  position: relative;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Time ruler above the canvas */
+.time-ruler {
+  height: 22px;
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-2);
+}
+#rulerCanvas {
+  display: block; width: 100%; height: 100%;
+}
+
+/* Main waveform canvas */
+.canvas-wrap {
+  position: relative;
+  height: 200px;
+  cursor: crosshair;
+  overflow: hidden;
+}
+#waveformCanvas {
+  display: block; width: 100%; height: 100%;
+  touch-action: none;
+}
+
+/* Playhead line — CSS overlay so it's always pixel-crisp */
+.playhead {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: var(--accent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms;
+}
+.playhead.visible { opacity: 0.7; }
+
+/* Zoom / pan toolbar */
+.waveform-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--bg-2);
+  border-top: 1px solid var(--border-subtle);
+}
+.toolbar-group { display: flex; align-items: center; gap: 4px; }
+.toolbar-sep {
+  width: 1px; height: 16px;
+  background: var(--border-subtle);
+  margin: 0 4px;
+}
+.zoom-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-quaternary);
+  letter-spacing: 0.05em;
+  min-width: 42px;
+  text-align: right;
+}
+
+/* ============================================================
+   SEEK BAR + TRANSPORT
+   ============================================================ */
+.seekbar-wrap {
+  padding: 0 0 2px;
+  background: var(--bg-1);
+}
+.seekbar {
+  position: relative;
+  height: 3px;
+  background: var(--bg-3);
+  cursor: pointer;
+}
+.seekbar-fill {
+  position: absolute; inset: 0 auto 0 0;
+  background: var(--accent);
+  width: 0%;
+  pointer-events: none;
+}
+.seekbar-thumb {
+  position: absolute;
+  top: 50%; transform: translate(-50%, -50%);
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms, transform 160ms var(--ease-spring);
+}
+.seekbar:hover .seekbar-thumb { opacity: 1; transform: translate(-50%,-50%) scale(1.15); }
+
+.transport {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.transport-controls { display: flex; gap: 5px; }
+.time-readout {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+}
+.time-current { color: var(--text-primary); }
+.time-sep { color: var(--text-quaternary); }
+.time-total {}
+
+/* ============================================================
+   DEAD AS DISCO BAR
+   ============================================================ */
+.disco-bar {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding: 13px 18px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  transition:
+    border-color 300ms var(--ease-out),
+    background   300ms var(--ease-out);
+}
+.disco-bar.on {
+  border-color: var(--disco-border);
+  background: var(--disco-dim);
+}
+
+.disco-left { display: flex; align-items: center; gap: 11px; }
+.disco-pip {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text-quaternary);
+  flex-shrink: 0;
+  transition: background 280ms var(--ease-out), box-shadow 280ms var(--ease-out);
+}
+.disco-bar.on .disco-pip {
+  background: var(--disco);
+  box-shadow: 0 0 6px rgba(196,122,154,0.4);
+}
+.disco-info {}
+.disco-title {
+  font-size: 12px; font-weight: 500;
+  color: var(--text-primary);
+}
+.disco-desc {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.02em;
+  margin-top: 1px;
+}
+
+/* Toggle switch */
+.toggle-label {
+  display: flex; align-items: center; gap: 9px;
+  cursor: pointer; user-select: none;
+}
+.toggle-text {
+  font-family: var(--font-mono);
+  font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-quaternary);
+  min-width: 22px; text-align: right;
+  transition: color 220ms;
+}
+.disco-bar.on .toggle-text { color: var(--disco); }
+
+.toggle-track {
+  position: relative;
+  width: 34px; height: 18px;
+  border-radius: 9px;
+  background: var(--bg-4);
+  border: 1px solid var(--border-default);
+  transition: background 220ms, border-color 220ms;
+  flex-shrink: 0;
+}
+.toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--text-quaternary);
+  transition: transform 220ms var(--ease-spring), background 220ms;
+}
+input[type="checkbox"].toggle-input { display: none; }
+input[type="checkbox"].toggle-input:checked + .toggle-track {
+  background: var(--disco);
+  border-color: var(--disco);
+}
+input[type="checkbox"].toggle-input:checked + .toggle-track::after {
+  transform: translateX(16px);
+  background: #fff;
+}
+
+/* ============================================================
+   CALIBRATION PANEL
+   ============================================================ */
+.cal-panel {
+  margin-top: 12px;
+  border: 1px solid var(--disco-border);
+  border-radius: 8px;
+  background: var(--bg-1);
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    max-height 420ms var(--ease-out),
+    opacity    300ms var(--ease-out);
+}
+.cal-panel.open { max-height: 240px; opacity: 1; pointer-events: auto; }
+
+.cal-header {
+  display: flex; align-items: center; gap: 9px;
+  padding: 12px 18px;
+  background: rgba(196,122,154,0.04);
+  border-bottom: 1px solid var(--disco-border);
+}
+.cal-header-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--disco); flex-shrink: 0;
+}
+.cal-header-title {
+  font-family: var(--font-mono);
+  font-size: 9px; font-weight: 500;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--disco);
+}
+.cal-header-note {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-quaternary);
+  letter-spacing: 0.04em;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+}
+.cal-cell {
+  padding: 16px 20px;
+  position: relative;
+}
+.cal-cell + .cal-cell { border-left: 1px solid var(--disco-border); }
+.cal-cell.variant { background: rgba(196,122,154,0.035); }
+
+.cal-field-label {
+  font-family: var(--font-mono);
+  font-size: 8px; font-weight: 500;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 8px;
+  display: flex; align-items: center; gap: 5px;
+}
+.cal-badge {
+  background: var(--disco-border);
+  color: var(--disco);
+  font-size: 7px; letter-spacing: 0.1em;
+  padding: 1px 4px; border-radius: 2px;
+}
+
+.cal-value-row {
+  display: flex; align-items: baseline; gap: 5px;
+}
+.cal-value {
+  font-family: var(--font-mono);
+  font-size: 30px; font-weight: 400;
+  letter-spacing: -0.02em; line-height: 1;
+  color: var(--text-primary);
+}
+.cal-unit {
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--disco);
+}
+.cal-hint {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-quaternary);
+  margin-top: 5px; letter-spacing: 0.02em;
+}
+
+/* Copy button */
+.copy-btn {
+  position: absolute; top: 10px; right: 10px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-quaternary);
+  font-family: var(--font-mono);
+  font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 3px;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 160ms var(--ease-out);
+}
+.cal-cell:hover .copy-btn { opacity: 1; }
+.copy-btn:hover {
+  border-color: var(--disco-border);
+  color: var(--disco);
+  background: var(--disco-dim);
+}
+.copy-btn.done {
+  opacity: 1;
+  border-color: var(--disco-border);
+  color: var(--disco);
+}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+.footer {
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-quaternary);
+  letter-spacing: 0.04em;
+}
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+@keyframes spin    { to { transform: rotate(360deg); } }
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 680px) {
+  .app { padding: 28px 16px 60px; }
+  .stat-row { grid-template-columns: 1fr 1fr; }
+  .stat-cell:nth-child(3) { border-top: 1px solid var(--border-subtle); }
+  .stat-cell:nth-child(3), .stat-cell:nth-child(4) { border-top: 1px solid var(--border-subtle); }
+  .stat-cell:nth-child(odd) { border-left: none; }
+  .cal-grid { grid-template-columns: 1fr; }
+  .cal-cell + .cal-cell { border-left: none; border-top: 1px solid var(--disco-border); }
+  .canvas-wrap { height: 140px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── HEADER ────────────────────────────────────── -->
+  <header class="header">
+    <div class="brand">
+      <div class="brand-glyph">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+        </svg>
+      </div>
+      <span class="brand-name">Tempo</span>
+      <span class="brand-version">2.0</span>
+    </div>
+    <div class="header-right">BPM Analyzer</div>
+  </header>
+
+  <!-- ── DROP ZONE ─────────────────────────────────── -->
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" accept=".mp3,.wav,audio/mpeg,audio/wav,audio/x-wav" />
+
+    <div class="drop-empty" id="dropEmpty">
+      <svg class="drop-upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <div class="drop-title">Drop an audio file to analyze</div>
+      <div class="drop-sub">.mp3 or .wav &nbsp;·&nbsp; click to browse</div>
+    </div>
+
+    <div class="file-info" id="fileInfo" style="display:none;">
+      <div class="file-thumb">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+        </svg>
+      </div>
+      <div class="file-meta">
+        <div class="file-name" id="fileName">—</div>
+        <div class="file-detail" id="fileDetail">—</div>
+      </div>
+      <div class="file-actions">
+        <button class="btn" id="replaceBtn">Replace</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ERROR ─────────────────────────────────────── -->
+  <div id="errorContainer"></div>
+
+  <!-- ── DEAD AS DISCO BAR ─────────────────────────── -->
+  <div class="disco-bar" id="discoBar">
+    <div class="disco-left">
+      <div class="disco-pip" id="discoPip"></div>
+      <div class="disco-info">
+        <div class="disco-title">Dead As Disco Mode</div>
+        <div class="disco-desc">Calculates calibration values for the Advanced Editor</div>
+      </div>
+    </div>
+    <label class="toggle-label" for="discoToggle">
+      <span class="toggle-text" id="toggleText">Off</span>
+      <input type="checkbox" class="toggle-input" id="discoToggle" />
+      <span class="toggle-track"></span>
+    </label>
+  </div>
+
+  <!-- ── CALIBRATION PANEL ─────────────────────────── -->
+  <div class="cal-panel" id="calPanel">
+    <div class="cal-header">
+      <div class="cal-header-dot"></div>
+      <div class="cal-header-title">Calibration Data — Advanced Editor</div>
+      <div class="cal-header-note">Dead As Disco</div>
+    </div>
+    <div class="cal-grid">
+      <div class="cal-cell">
+        <div class="cal-field-label">Original Tempo</div>
+        <div class="cal-value-row">
+          <span class="cal-value" id="calBPM">—</span>
+          <span class="cal-unit">BPM</span>
+        </div>
+        <div class="cal-hint">Standard tempo field</div>
+        <button class="copy-btn" id="copyBPM">Copy</button>
+      </div>
+      <div class="cal-cell variant">
+        <div class="cal-field-label">
+          Doubled Tempo
+          <span class="cal-badge">× 2</span>
+        </div>
+        <div class="cal-value-row">
+          <span class="cal-value" id="calBPM2">—</span>
+          <span class="cal-unit">BPM</span>
+        </div>
+        <div class="cal-hint">Preferred for precise mapping</div>
+        <button class="copy-btn" id="copyBPM2">Copy</button>
+      </div>
+      <div class="cal-cell">
+        <div class="cal-field-label">Audio Lag</div>
+        <div class="cal-value-row">
+          <span class="cal-value" id="calLag">—</span>
+          <span class="cal-unit">ms</span>
+        </div>
+        <div class="cal-hint">First beat offset</div>
+        <button class="copy-btn" id="copyLag">Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MAIN PANEL ────────────────────────────────── -->
+  <div class="panel" id="panel">
+
+    <!-- Loading state -->
+    <div class="loading-state" id="loadingState">
+      <div class="loading-spinner"></div>
+      <div class="loading-label" id="loadingLabel">Initializing…</div>
+      <div class="loading-progress"><div class="loading-progress-fill" id="loadingBar"></div></div>
+    </div>
+
+    <!-- Result content -->
+    <div id="resultContent" style="display:none;">
+
+      <!-- Stat row -->
+      <div class="stat-row">
+        <div class="stat-cell">
+          <div class="stat-label">Tempo</div>
+          <div class="stat-value">
+            <span id="statBPM">—</span>
+            <span class="stat-unit">BPM</span>
+          </div>
+          <div class="stat-sub" id="statTempo">—</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">Duration</div>
+          <div class="stat-value" id="statDuration">—</div>
+          <div class="stat-sub" id="statMeta">—</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">First Beat</div>
+          <div class="stat-value">
+            <span id="statOffset">—</span>
+            <span class="stat-unit">ms</span>
+          </div>
+          <div class="stat-sub" id="statOffsetSec">—</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">Sample Rate</div>
+          <div class="stat-value">
+            <span id="statSR">—</span>
+            <span class="stat-unit">kHz</span>
+          </div>
+          <div class="stat-sub" id="statCh">—</div>
+        </div>
+      </div>
+
+      <!-- Waveform region -->
+      <div class="waveform-region">
+        <!-- Time ruler -->
+        <div class="time-ruler">
+          <canvas id="rulerCanvas"></canvas>
+        </div>
+        <!-- Waveform canvas -->
+        <div class="canvas-wrap" id="canvasWrap">
+          <canvas id="waveformCanvas"></canvas>
+          <div class="playhead" id="playhead"></div>
+        </div>
+        <!-- Zoom / pan toolbar -->
+        <div class="waveform-toolbar">
+          <div class="toolbar-group">
+            <button class="btn btn-icon" id="zoomOutBtn" title="Zoom Out (-)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+            </button>
+            <button class="btn btn-icon" id="zoomInBtn" title="Zoom In (+)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+            </button>
+            <button class="btn btn-icon" id="zoomFitBtn" title="Fit to Window">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>
+            </button>
+            <div class="toolbar-sep"></div>
+            <span class="zoom-label" id="zoomLabel">1×</span>
+          </div>
+          <div class="toolbar-group">
+            <button class="btn" id="scrollLeftBtn" title="Scroll Left">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button class="btn" id="scrollRightBtn" title="Scroll Right">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+            <div class="toolbar-sep"></div>
+            <button class="btn" id="followBtn" title="Toggle playhead follow">Follow</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Seek bar -->
+      <div class="seekbar-wrap">
+        <div class="seekbar" id="seekbar">
+          <div class="seekbar-fill" id="seekFill"></div>
+          <div class="seekbar-thumb" id="seekThumb"></div>
+        </div>
+      </div>
+
+      <!-- Transport -->
+      <div class="transport">
+        <div class="transport-controls">
+          <button class="btn btn-primary btn-icon" id="playBtn" title="Play (Space)">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>
+          </button>
+          <button class="btn btn-icon" id="pauseBtn" title="Pause (Space)" disabled>
+            <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+          </button>
+          <button class="btn btn-icon" id="stopBtn" title="Stop" disabled>
+            <svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+          </button>
+        </div>
+        <div class="time-readout">
+          <span class="time-current" id="timeCurrent">0:00.0</span>
+          <span class="time-sep">/</span>
+          <span class="time-total" id="timeTotal">0:00.0</span>
+        </div>
+      </div>
+
+    </div><!-- /resultContent -->
+  </div><!-- /panel -->
+
+  <footer class="footer">
+    <span>Pure client-side · Web Audio API · No data leaves your device</span>
+    <span>Tempo v2.0</span>
+  </footer>
+
+</div><!-- /app -->
+
+<script>
+"use strict";
+/* ============================================================================
+   TEMPO v2.0 — Complete Audio Analysis & Waveform Tool
+   ============================================================================
+   Architecture: Three clean ES6 modules as IIFEs:
+     1. AudioEngine   — decoding, beat detection, playback graph
+     2. WaveformView  — canvas rendering, zoom/pan, beatlines
+     3. AppController — UI events, state coordination
+   ============================================================================ */
+
+/* ============================================================================
+   MODULE 1: AudioEngine
+   Handles all Web Audio API logic:
+   - File decoding
+   - BPM detection via multi-pass offline filter + peak analysis
+   - First-beat offset calculation (Audio Lag)
+   - Playback: source → analyser → gain → destination
+   ============================================================================ */
+const AudioEngine = (() => {
+
+  // ── Private state ──────────────────────────────────────────────────────────
+  let ctx          = null;   // AudioContext (lazy init)
+  let buffer       = null;   // Decoded AudioBuffer
+  let source       = null;   // AudioBufferSourceNode (one-shot, recreated each play)
+  let analyser     = null;   // AnalyserNode (waveform visualisation feed)
+  let gain         = null;   // GainNode
+  let timeDomainBuf= null;   // Uint8Array: analyser time-domain data
+
+  let _startedAt   = 0;      // ctx.currentTime when last play() was called
+  let _startOffset = 0;      // buffer offset at last play() call
+  let _isPlaying   = false;
+  let _isPaused    = false;
+
+  // ── Lazy AudioContext ───────────────────────────────────────────────────────
+  function getCtx() {
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  // ── Decode ─────────────────────────────────────────────────────────────────
+  async function decode(arrayBuffer) {
+    const c = getCtx();
+    buffer = await c.decodeAudioData(arrayBuffer);
+    return buffer;
+  }
+
+  // Re-attach a previously decoded AudioBuffer (e.g. from in-memory cache).
+  // No decoding needed — just set the reference and ensure the context is live.
+  async function restoreBuffer(buf) {
+    getCtx(); // ensure context exists and is resumed
+    buffer = buf;
+    return buffer;
+  }
+
+  // ── Setup shared graph nodes ────────────────────────────────────────────────
+  function ensureGraph() {
+    const c = getCtx();
+    if (!analyser) {
+      analyser = c.createAnalyser();
+      // fftSize 4096 → 4096 time-domain samples per frame: high-res waveform
+      analyser.fftSize = 4096;
+      analyser.smoothingTimeConstant = 0.75;
+      timeDomainBuf = new Uint8Array(analyser.fftSize);
+    }
+    if (!gain) {
+      gain = c.createGain();
+      gain.gain.value = 1;
+    }
+    analyser.connect(gain);
+    gain.connect(c.destination);
+  }
+
+  // ── Playback ────────────────────────────────────────────────────────────────
+  function play(onEnded) {
+    if (!buffer) return;
+    const c = getCtx();
+    ensureGraph();
+
+    source = c.createBufferSource();
+    source.buffer = buffer;
+    source.connect(analyser);
+
+    const offset = _isPaused ? _startOffset : 0;
+    source.start(0, offset);
+    _startedAt   = c.currentTime;
+    _startOffset = offset;
+    _isPlaying   = true;
+    _isPaused    = false;
+
+    source.onended = () => {
+      if (_isPlaying && !_isPaused) {
+        const elapsed = c.currentTime - _startedAt + _startOffset;
+        if (elapsed >= buffer.duration - 0.08) {
+          _isPlaying = false;
+          if (onEnded) onEnded();
+        }
+      }
+    };
+  }
+
+  function pause() {
+    if (!_isPlaying || _isPaused) return;
+    const c = getCtx();
+    _startOffset = Math.max(0, Math.min(buffer.duration,
+      c.currentTime - _startedAt + _startOffset));
+    try { source.stop(); } catch(e) {}
+    source.disconnect();
+    _isPlaying = false;
+    _isPaused  = true;
+  }
+
+  function stop() {
+    if (source) {
+      try { source.stop(); } catch(e) {}
+      source.disconnect();
+      source = null;
+    }
+    _isPlaying   = false;
+    _isPaused    = false;
+    _startOffset = 0;
+  }
+
+  function seekTo(timeSeconds) {
+    const wasPlaying = _isPlaying;
+    if (source) { try { source.stop(); } catch(e) {} source.disconnect(); source = null; }
+    _isPlaying   = false;
+    _isPaused    = true;
+    _startOffset = Math.max(0, Math.min(buffer.duration, timeSeconds));
+    return wasPlaying;
+  }
+
+  function currentTime() {
+    if (_isPlaying) {
+      const c = getCtx();
+      return Math.max(0, Math.min(buffer.duration,
+        c.currentTime - _startedAt + _startOffset));
+    }
+    return _startOffset;
+  }
+
+  // Fill the timeDomainBuf with latest analyser data.
+  // Called each animation frame by WaveformView.
+  function getTimeDomain() {
+    if (analyser && _isPlaying) analyser.getByteTimeDomainData(timeDomainBuf);
+    return timeDomainBuf;
+  }
+
+  // Expose read-only state via getters
+  function isPlaying() { return _isPlaying; }
+  function isPaused()  { return _isPaused; }
+  function getBuffer() { return buffer; }
+  function getAnalyserBufSize() { return analyser ? analyser.fftSize : 0; }
+
+  function reset() {
+    stop();
+    buffer = null;
+    _startOffset = 0;
+    _isPaused = false;
+  }
+
+  /* --------------------------------------------------------------------------
+     BPM DETECTION  +  FIRST BEAT OFFSET (Audio Lag)
+     --------------------------------------------------------------------------
+     This is a significant upgrade over the v1 single-pass approach.
+
+     MULTI-BAND ENERGY APPROACH:
+       Instead of a single lowpass at 150 Hz, we run TWO offline render passes:
+         Pass A) Kick band: 60–180 Hz bandpass  → captures kick drum transients
+         Pass B) Sub band:  20–80 Hz lowpass    → captures bass/kick sub hits
+
+       We then merge the two energy envelopes: a sample "votes" as a beat only
+       if it registers as a local peak in BOTH bands. This dramatically reduces
+       false positives from bass notes that aren't beats, and from hi-hat bleed.
+
+     ONSET STRENGTH ENVELOPE (inspired by librosa's spectral flux):
+       Rather than detecting peaks in the raw amplitude, we compute a half-wave
+       rectified first-difference of the filtered envelope:
+         onset[n] = max(0,  |filtered[n]| - |filtered[n-1]| )
+       This emphasises transient *attacks* (the sharp rise at a beat onset)
+       rather than sustained amplitude, which is far more stable across genres.
+
+     ADAPTIVE THRESHOLD:
+       We use a sliding-window median of the onset envelope to compute a local
+       threshold. This adapts to changes in loudness (quiet verse → loud chorus)
+       where a global threshold would miss beats or fire too often.
+
+     BPM HISTOGRAM + OCTAVE FOLDING:
+       Same method as v1 but with 4× more votes (10 lookahead peaks per peak)
+       and a finer 0.5 BPM resolution.
+
+     FIRST BEAT OFFSET:
+       Peak[0] → raw offset in seconds → milliseconds.
+       Then we backtrack one beat-interval if the first peak appears to be
+       "late" (> 75% through the first beat slot), as that usually means the
+       algorithm missed a quiet pickup beat.
+  -------------------------------------------------------------------------- */
+  async function analyze(onProgress) {
+    if (!buffer) throw new Error("No buffer");
+
+    onProgress?.(0.05, 'Filtering kick band…');
+
+    const sr  = buffer.sampleRate;
+    const len = buffer.length;
+
+    // ── Pass A: 60–180 Hz bandpass (kick drum body) ─────────────────────────
+    const passA = await renderOffline(buffer, sr, len, (ctx, src) => {
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = 55; hp.Q.value = 0.8;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';  lp.frequency.value = 185; lp.Q.value = 0.8;
+      src.connect(hp); hp.connect(lp); lp.connect(ctx.destination);
+    });
+
+    onProgress?.(0.35, 'Filtering sub band…');
+
+    // ── Pass B: 20–80 Hz lowpass (sub kick / bass) ──────────────────────────
+    const passB = await renderOffline(buffer, sr, len, (ctx, src) => {
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 80; lp.Q.value = 0.7;
+      src.connect(lp); lp.connect(ctx.destination);
+    });
+
+    onProgress?.(0.60, 'Computing onset envelope…');
+
+    const dataA = passA.getChannelData(0);
+    const dataB = passB.getChannelData(0);
+
+    // ── Onset strength envelope ─────────────────────────────────────────────
+    // Half-wave rectified first-difference on each band, then sum.
+    const onset = new Float32Array(len);
+    for (let i = 1; i < len; i++) {
+      const dA = Math.max(0, Math.abs(dataA[i]) - Math.abs(dataA[i-1]));
+      const dB = Math.max(0, Math.abs(dataB[i]) - Math.abs(dataB[i-1]));
+      onset[i] = dA + dB;
+    }
+
+    // ── Smooth the onset envelope (moving average, ~3ms window) ─────────────
+    const smoothWin = Math.floor(sr * 0.003);
+    const smoothed  = smooth(onset, smoothWin);
+
+    onProgress?.(0.72, 'Detecting peaks…');
+
+    // ── Adaptive sliding-window threshold ───────────────────────────────────
+    // For each candidate sample, the local threshold = median of a window
+    // of ±400ms of onset values, times a sensitivity multiplier.
+    // We skip the true median (too slow for 44100× N samples) and approximate
+    // it as mean * 1.1 which tracks it closely for unimodal distributions.
+    const threshWin  = Math.floor(sr * 0.40); // ±400ms window
+    const threshMult = 1.25;                  // sensitivity knob
+    const refract    = Math.floor(sr * 0.18); // 180ms refractory — max ~333 BPM
+
+    const peaks = [];
+    let lastPeak = -refract;
+
+    for (let i = 1; i < smoothed.length - 1; i++) {
+      if (i - lastPeak < refract) continue;
+      const v = smoothed[i];
+      // Local mean threshold
+      const wStart = Math.max(0, i - threshWin);
+      const wEnd   = Math.min(smoothed.length - 1, i + threshWin);
+      let   wSum   = 0;
+      const wLen   = wEnd - wStart;
+      for (let j = wStart; j < wEnd; j++) wSum += smoothed[j];
+      const localThresh = (wSum / wLen) * threshMult;
+
+      if (v > localThresh && v >= smoothed[i-1] && v >= smoothed[i+1]) {
+        peaks.push(i);
+        lastPeak = i;
+      }
+    }
+
+    onProgress?.(0.82, 'Building tempo histogram…');
+
+    if (peaks.length < 4) return { bpm: 120, firstBeatMs: 0 };
+
+    // ── BPM histogram with 10-peak lookahead ────────────────────────────────
+    const hist = {};
+    for (let i = 0; i < peaks.length; i++) {
+      for (let j = 1; j <= 10 && i + j < peaks.length; j++) {
+        const dtSec = (peaks[i+j] - peaks[i]) / sr;
+        let   bpm   = (60 / dtSec) * j;
+        // Octave-fold into 60–180 BPM
+        while (bpm < 60)  bpm *= 2;
+        while (bpm > 180) bpm /= 2;
+        const bucket = Math.round(bpm * 2) / 2; // 0.5 BPM resolution
+        hist[bucket] = (hist[bucket] || 0) + 1;
+      }
+    }
+
+    // Winner = bucket with most votes
+    let bestBPM = 120, bestVotes = 0;
+    for (const [b, v] of Object.entries(hist)) {
+      if (v > bestVotes) { bestVotes = v; bestBPM = parseFloat(b); }
+    }
+
+    // Weighted-average refinement in ±1.5 BPM window
+    let wSum = 0, wTot = 0;
+    for (const [b, v] of Object.entries(hist)) {
+      const bv = parseFloat(b);
+      if (Math.abs(bv - bestBPM) <= 1.5) { wSum += bv * v; wTot += v; }
+    }
+    if (wTot > 0) bestBPM = wSum / wTot;
+
+    onProgress?.(0.93, 'Computing first beat offset…');
+
+    // ── First beat offset (Audio Lag) ────────────────────────────────────────
+    // Raw first peak time in seconds → ms
+    const rawFirstSec    = peaks[0] / sr;
+    const beatIntervalMs = (60 / bestBPM) * 1000;
+    let   offsetMs       = rawFirstSec * 1000;
+
+    // If the first detected peak is more than 75% through a beat interval,
+    // it's likely one beat late (missed a quiet pickup). Step back one interval.
+    const posInBeat = offsetMs % beatIntervalMs;
+    if (posInBeat > beatIntervalMs * 0.75) {
+      offsetMs -= posInBeat; // snap back to the beat boundary
+    } else if (posInBeat < beatIntervalMs * 0.18) {
+      // Very close to zero — snap forward so we don't show a negative/zero lag.
+      // This handles songs that start exactly on the beat.
+      offsetMs = posInBeat < 1 ? offsetMs : offsetMs - posInBeat;
+    }
+    offsetMs = Math.max(0, offsetMs);
+
+    onProgress?.(1.0, 'Done');
+    return { bpm: bestBPM, firstBeatMs: offsetMs };
+  }
+
+  // Render a buffer through an effect graph in an OfflineAudioContext.
+  async function renderOffline(srcBuffer, sr, len, buildGraph) {
+    const offCtx = new OfflineAudioContext(1, len, sr);
+    const src    = offCtx.createBufferSource();
+    src.buffer   = srcBuffer;
+    buildGraph(offCtx, src);
+    src.start(0);
+    return offCtx.startRendering();
+  }
+
+  // Simple box-filter moving average for onset envelope smoothing.
+  function smooth(arr, win) {
+    if (win < 2) return arr;
+    const out = new Float32Array(arr.length);
+    let   sum = 0;
+    for (let i = 0; i < win && i < arr.length; i++) sum += arr[i];
+    for (let i = 0; i < arr.length; i++) {
+      out[i] = sum / Math.min(win, arr.length);
+      if (i + win < arr.length)    sum += arr[i + win];
+      if (i - win + 1 >= 0)        sum -= arr[i - win + 1];
+    }
+    return out;
+  }
+
+  return {
+    decode, restoreBuffer, analyze, reset,
+    play, pause, stop, seekTo,
+    currentTime, isPlaying, isPaused, getBuffer,
+    getTimeDomain, getAnalyserBufSize,
+  };
+})();
+
+/* ============================================================================
+   MODULE 2: WaveformView
+   All canvas drawing logic.
+
+   OVERVIEW OF THE RENDERING APPROACH:
+   ──────────────────────────────────────────────────────────────────────────
+   The waveform display has two layers drawn on ONE canvas each frame:
+
+   LAYER 1 — Static waveform mipmaps (drawn from pre-computed data):
+     On load we build a "mipmap" array: for each pixel-width zoom level we
+     pre-compute min/max amplitude arrays at various downsample ratios.
+     At runtime we pick the correct mipmap for the current zoom, letting us
+     draw 5-minute tracks at 60fps without iterating over millions of samples.
+
+   LAYER 2 — Live overlay (drawn each frame):
+     - Disco beatlines (vertical pink lines) at computed x positions
+     - Live time-domain waveform polyline (from AnalyserNode)
+     - Playhead line
+
+   ZOOM / PAN MODEL:
+     zoom    — how many seconds of audio are visible on screen (zoomLevel)
+               e.g. zoom=4 means 4 seconds fill the canvas width.
+     panSec  — the start time (seconds) of the visible window.
+     At 1× zoom, the entire track fits the canvas.
+     At max zoom, ~0.5 seconds is visible.
+   ──────────────────────────────────────────────────────────────────────────
+   ============================================================================ */
+const WaveformView = (() => {
+
+  // ── Canvas references ───────────────────────────────────────────────────────
+  const cvs    = document.getElementById('waveformCanvas');
+  const ctx    = cvs.getContext('2d');
+  const ruler  = document.getElementById('rulerCanvas');
+  const rCtx   = ruler.getContext('2d');
+  const dpr    = () => window.devicePixelRatio || 1;
+
+  // ── State ───────────────────────────────────────────────────────────────────
+  let mipmap      = null;   // Pre-computed waveform data { peaks: [{min,max}], spp }[]
+  let buffer      = null;   // Reference to AudioBuffer
+  let duration    = 0;      // Total audio duration in seconds
+
+  let zoomLevel   = 0;      // Current zoom level index (0 = fit, higher = more zoom)
+  let panSec      = 0;      // Start of visible window (seconds)
+  let followPlay  = true;   // Auto-pan to keep playhead in view
+
+  let animId      = null;
+  let discoMode   = false;
+  let beatBPM     = null;
+  let beatOffsetMs= null;
+
+  // Zoom levels: how many seconds are visible at each step
+  // We generate these dynamically based on duration when a track loads.
+  let zoomSteps   = [];
+  const MAX_ZOOM_STEPS = 14;
+
+  // ── Init / resize ───────────────────────────────────────────────────────────
+  function resize() {
+    const d   = dpr();
+    const w   = cvs.clientWidth;
+    const h   = cvs.clientHeight;
+    cvs.width  = Math.floor(w * d);
+    cvs.height = Math.floor(h * d);
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+
+    const rw = ruler.clientWidth;
+    const rh = ruler.clientHeight;
+    ruler.width  = Math.floor(rw * d);
+    ruler.height = Math.floor(rh * d);
+    rCtx.setTransform(d, 0, 0, d, 0, 0);
+
+    if (buffer) { drawWaveform(); drawRuler(); }
+  }
+  window.addEventListener('resize', resize);
+
+  // ── Mipmap pre-computation ──────────────────────────────────────────────────
+  // We pre-compute min/max peak arrays at multiple samples-per-pixel (spp) ratios.
+  // At render time we select the closest spp to our current zoom and canvas width.
+  // This is the key performance optimization: we never iterate raw samples at 60fps.
+  function buildMipmap(buf) {
+    buffer   = buf;
+    duration = buf.duration;
+    const sr = buf.sampleRate;
+    const ch = buf.getChannelData(0); // mono (mix down if stereo)
+    const totalSamples = buf.length;
+
+    // We want enough levels to go from "fit all" down to ~0.5s visible.
+    // Compute zoom steps: full duration, then half, quarter, … until ~0.5s
+    zoomSteps = [];
+    let vis = duration;
+    while (vis > 0.4 && zoomSteps.length < MAX_ZOOM_STEPS) {
+      zoomSteps.push(parseFloat(vis.toFixed(4)));
+      vis /= 1.75;
+    }
+    zoomLevel = 0; // reset to fit
+    panSec    = 0;
+
+    // Build mipmap: one peaks array per zoom step
+    // spp = samples per pixel at 1920px canvas width (a safe upper bound)
+    mipmap = zoomSteps.map(visSeconds => {
+      const canvasW = 1920; // reference width
+      const spp     = Math.max(1, Math.floor((visSeconds * sr) / canvasW));
+      const numBins = Math.ceil(totalSamples / spp);
+      const peaks   = new Float32Array(numBins * 2); // [min0,max0, min1,max1, …]
+
+      for (let bin = 0; bin < numBins; bin++) {
+        let mn = 1, mx = -1;
+        const start = bin * spp;
+        const end   = Math.min(start + spp, totalSamples);
+        for (let i = start; i < end; i++) {
+          const v = ch[i];
+          if (v < mn) mn = v;
+          if (v > mx) mx = v;
+        }
+        peaks[bin * 2]     = mn;
+        peaks[bin * 2 + 1] = mx;
+      }
+      return { peaks, spp, numBins };
+    });
+  }
+
+  // ── Visible window helpers ──────────────────────────────────────────────────
+  function visSeconds() { return zoomSteps[zoomLevel] ?? duration; }
+
+  // Clamp panSec so we never scroll past the track ends.
+  function clampPan() {
+    const vis = visSeconds();
+    panSec = Math.max(0, Math.min(duration - vis, panSec));
+    if (duration <= vis) panSec = 0;
+  }
+
+  // Convert audio time → canvas x (CSS pixels)
+  function timeToX(t) {
+    const w = cvs.clientWidth;
+    return ((t - panSec) / visSeconds()) * w;
+  }
+
+  // Convert canvas x → audio time
+  function xToTime(x) {
+    const w = cvs.clientWidth;
+    return panSec + (x / w) * visSeconds();
+  }
+
+  // ── Main draw ───────────────────────────────────────────────────────────────
+  function drawWaveform(playTimeSec, liveData) {
+    if (!mipmap) return;
+    const w  = cvs.clientWidth;
+    const h  = cvs.clientHeight;
+    const sr = buffer.sampleRate;
+    ctx.clearRect(0, 0, w, h);
+
+    // Pick the mipmap level closest to current zoom
+    const { peaks, spp, numBins } = mipmap[zoomLevel];
+
+    const vis       = visSeconds();
+    const startSec  = panSec;
+    const endSec    = panSec + vis;
+
+    // Convert visible time range to sample indices → bin indices
+    const startSample = Math.max(0, Math.floor(startSec * sr));
+    const endSample   = Math.min(buffer.length, Math.ceil(endSec * sr));
+    const startBin    = Math.floor(startSample / spp);
+    const endBin      = Math.min(numBins - 1, Math.ceil(endSample / spp));
+
+    // ── DISCO BEATLINES (drawn behind waveform) ───────────────────────────────
+    // Only draw bins that are visible — the key culling optimization.
+    if (discoMode && beatBPM && beatOffsetMs !== null) {
+      const beatIntervalSec = 60 / beatBPM;
+      const firstBeatSec    = beatOffsetMs / 1000;
+
+      // First beat index within visible range
+      const firstVisible = Math.max(0,
+        Math.floor((startSec - firstBeatSec) / beatIntervalSec) - 1);
+      const lastVisible  = Math.ceil((endSec - firstBeatSec) / beatIntervalSec) + 1;
+
+      for (let bi = firstVisible; bi <= lastVisible; bi++) {
+        const beatT = firstBeatSec + bi * beatIntervalSec;
+        if (beatT < 0 || beatT > duration) continue;
+
+        const x = timeToX(beatT);
+        if (x < -2 || x > w + 2) continue; // off-screen cull
+
+        const isBar      = (bi % 4 === 0); // bar line (every 4 beats)
+        const isDownbeat = (bi % 2 === 0); // downbeat (every 2 beats)
+
+        // Shade even beat-to-beat regions for visual grouping
+        if (isDownbeat) {
+          const nextT = firstBeatSec + (bi + 1) * beatIntervalSec;
+          const x2    = timeToX(nextT);
+          ctx.fillStyle = 'rgba(212,132,168,0.055)';
+          ctx.fillRect(Math.max(0,x), 0, Math.min(w, x2) - Math.max(0, x), h);
+        }
+
+        // Vertical line
+        ctx.beginPath();
+        ctx.moveTo(x + 0.5, 0);
+        ctx.lineTo(x + 0.5, h);
+        if (isBar) {
+          ctx.strokeStyle = 'rgba(212,132,168,0.85)';
+          ctx.lineWidth   = 1.5;
+        } else if (isDownbeat) {
+          ctx.strokeStyle = 'rgba(212,132,168,0.55)';
+          ctx.lineWidth   = 1.0;
+        } else {
+          ctx.strokeStyle = 'rgba(212,132,168,0.30)';
+          ctx.lineWidth   = 0.6;
+        }
+        ctx.stroke();
+
+        // Beat number label on bar lines (every 4 beats) if zoomed in enough
+        if (isBar && vis < 8) {
+          ctx.fillStyle = 'rgba(212,132,168,0.5)';
+          ctx.font = `9px ${getCSSVar('--font-mono')}`;
+          ctx.fillText(`${bi + 1}`, x + 3, h - 6);
+        }
+      }
+    }
+
+    // ── STATIC WAVEFORM (min/max bars per pixel, from mipmap) ─────────────────
+    // Only loop over x-pixels that are visible. For a 5-minute track at 1× zoom
+    // this is just canvas.width pixels — never all 13 million raw samples.
+    const waveColor = discoMode
+      ? 'rgba(232,234,236,0.55)'
+      : getCSSVar('--accent');
+    const centerY = h / 2;
+
+    ctx.lineWidth = 1;
+    ctx.lineCap   = 'square';
+
+    for (let px = 0; px < w; px++) {
+      // Which audio time does this pixel correspond to?
+      const t      = panSec + (px / w) * vis;
+      const sample = t * sr;
+      const bin    = Math.floor(sample / spp);
+      if (bin < 0 || bin >= numBins) continue;
+
+      const mn = peaks[bin * 2];
+      const mx = peaks[bin * 2 + 1];
+
+      const yMin = centerY + mn * centerY * 0.88;
+      const yMax = centerY + mx * centerY * 0.88;
+
+      // Slight opacity variation based on amplitude for depth
+      const amp  = Math.abs(mx - mn) / 2;
+      const alpha = 0.35 + amp * 0.65;
+      ctx.strokeStyle = discoMode
+        ? `rgba(232,234,236,${alpha * 0.6})`
+        : `rgba(122,162,199,${alpha})`;
+
+      ctx.beginPath();
+      ctx.moveTo(px + 0.5, yMin);
+      ctx.lineTo(px + 0.5, yMax);
+      ctx.stroke();
+    }
+
+    // ── LIVE TIME-DOMAIN WAVEFORM (AnalyserNode data, during playback) ─────────
+    // This draws the actual real-time waveform ON TOP of the static overview.
+    // It's a thin, brighter line showing the current audio frame.
+    if (liveData && liveData.length > 0) {
+      const sliceW = w / liveData.length;
+      ctx.lineWidth   = 1.5;
+      ctx.strokeStyle = discoMode
+        ? 'rgba(240,242,244,0.85)'
+        : getCSSVar('--accent-strong');
+      ctx.lineJoin    = 'round';
+      ctx.lineCap     = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < liveData.length; i++) {
+        const v = (liveData[i] - 128) / 128;
+        const y = centerY + v * centerY * 0.82;
+        if (i === 0) ctx.moveTo(i * sliceW, y);
+        else         ctx.lineTo(i * sliceW, y);
+      }
+      ctx.stroke();
+    }
+  }
+
+  // ── Ruler ───────────────────────────────────────────────────────────────────
+  function drawRuler() {
+    if (!buffer) return;
+    const w  = ruler.clientWidth;
+    const h  = ruler.clientHeight;
+    rCtx.clearRect(0, 0, w, h);
+
+    const vis   = visSeconds();
+    const start = panSec;
+    const end   = panSec + vis;
+
+    // Choose a grid interval that results in ~6–12 ticks across the ruler.
+    const rawInterval = vis / 8;
+    // Snap to a clean interval: 0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60s ...
+    const niceSteps = [0.05,0.1,0.25,0.5,1,2,5,10,15,30,60,120,300];
+    const interval  = niceSteps.find(s => s >= rawInterval) ?? 300;
+
+    rCtx.font      = `10px ${getCSSVar('--font-mono')}`;
+    rCtx.fillStyle = getCSSVar('--text-quaternary');
+    rCtx.textBaseline = 'middle';
+
+    const firstTick = Math.ceil(start / interval) * interval;
+    for (let t = firstTick; t <= end; t += interval) {
+      const x = ((t - start) / vis) * w;
+      // Tick mark
+      rCtx.fillStyle = getCSSVar('--border-default');
+      rCtx.fillRect(Math.round(x), h - 5, 1, 5);
+      // Label
+      const label = formatTimePrecise(t);
+      rCtx.fillStyle = getCSSVar('--text-quaternary');
+      rCtx.fillText(label, x + 3, h / 2 - 1);
+    }
+  }
+
+  // ── Animation loop ──────────────────────────────────────────────────────────
+  function startLoop(getState) {
+    // getState() → { isPlaying, currentTime, liveData }
+    stopLoop();
+    function frame() {
+      const { isPlaying, currentTime, liveData } = getState();
+
+      // Auto-follow: if playing and playhead leaves the right 20% of canvas,
+      // or falls behind left edge, re-center the window on the playhead.
+      if (isPlaying && followPlay) {
+        const vis = visSeconds();
+        const rel = currentTime - panSec; // position within window
+        if (rel > vis * 0.80 || rel < 0) {
+          panSec = currentTime - vis * 0.20; // keep playhead at 20% from left
+          clampPan();
+        }
+      }
+
+      drawWaveform(currentTime, liveData);
+      drawRuler();
+
+      animId = requestAnimationFrame(frame);
+    }
+    animId = requestAnimationFrame(frame);
+  }
+
+  function stopLoop() {
+    if (animId) { cancelAnimationFrame(animId); animId = null; }
+  }
+
+  // ── Zoom / Pan controls ─────────────────────────────────────────────────────
+  function zoomIn()  { if (zoomLevel < zoomSteps.length - 1) { zoomLevel++; clampPan(); redrawIdle(); } }
+  function zoomOut() { if (zoomLevel > 0) { zoomLevel--; clampPan(); redrawIdle(); } }
+  function zoomFit() { zoomLevel = 0; panSec = 0; redrawIdle(); }
+
+  function panLeft()  { panSec -= visSeconds() * 0.25; clampPan(); redrawIdle(); }
+  function panRight() { panSec += visSeconds() * 0.25; clampPan(); redrawIdle(); }
+
+  function setFollow(v) { followPlay = v; }
+  function getFollowPlay() { return followPlay; }
+
+  // Seek click/drag on canvas
+  function canvasToTime(e) {
+    const rect = cvs.getBoundingClientRect();
+    const x    = (e.clientX ?? e.touches?.[0]?.clientX ?? 0) - rect.left;
+    return xToTime(x);
+  }
+
+  // Wheel to zoom (centered on mouse position)
+  function onWheel(e) {
+    if (!mipmap) return;
+    e.preventDefault();
+    const rect = cvs.getBoundingClientRect();
+    const mx   = e.clientX - rect.left;
+    const tAtMouse = xToTime(mx); // keep this time under the cursor
+
+    if (e.deltaY < 0) {
+      if (zoomLevel < zoomSteps.length - 1) zoomLevel++;
+    } else {
+      if (zoomLevel > 0) zoomLevel--;
+    }
+
+    // Re-pan so the time under the mouse stays under the mouse after zoom
+    const vis  = visSeconds();
+    const w    = cvs.clientWidth;
+    panSec = tAtMouse - (mx / w) * vis;
+    clampPan();
+    redrawIdle();
+  }
+
+  // Re-draw static waveform without animation loop running
+  function redrawIdle() {
+    drawWaveform(null, null);
+    drawRuler();
+  }
+
+  function setDisco(on, bpm, offsetMs) {
+    discoMode   = on;
+    beatBPM     = bpm;
+    beatOffsetMs= offsetMs;
+    redrawIdle();
+  }
+
+  function getZoomLabel() {
+    if (!duration || zoomLevel === 0) return '1×';
+    return `${(duration / visSeconds()).toFixed(1)}×`;
+  }
+
+  return {
+    resize, buildMipmap, redrawIdle,
+    startLoop, stopLoop,
+    zoomIn, zoomOut, zoomFit, panLeft, panRight,
+    setFollow, getFollowPlay,
+    canvasToTime, onWheel,
+    setDisco, getZoomLabel,
+    timeToX, clampPan,
+    get panSec() { return panSec; },
+    set panSec(v) { panSec = v; },
+    get canvas()  { return cvs; },
+    get followPlay() { return followPlay; },
+  };
+})();
+
+/* ============================================================================
+   MODULE 3: AppController
+   Owns all UI state, event handlers, and coordinates AudioEngine + WaveformView.
+   ============================================================================ */
+const AppController = (() => {
+
+  // ── DOM refs ────────────────────────────────────────────────────────────────
+  const $ = id => document.getElementById(id);
+  const dropZone    = $('dropZone');
+  const fileInput   = $('fileInput');
+  const dropEmpty   = $('dropEmpty');
+  const fileInfoEl  = $('fileInfo');
+  const fileNameEl  = $('fileName');
+  const fileDetailEl= $('fileDetail');
+  const replaceBtn  = $('replaceBtn');
+  const errorCont   = $('errorContainer');
+
+  const panel       = $('panel');
+  const loadState   = $('loadingState');
+  const loadLabel   = $('loadingLabel');
+  const loadBar     = $('loadingBar');
+  const resultCont  = $('resultContent');
+
+  const statBPM     = $('statBPM');
+  const statTempo   = $('statTempo');
+  const statDuration= $('statDuration');
+  const statMeta    = $('statMeta');
+  const statOffset  = $('statOffset');
+  const statOffSec  = $('statOffsetSec');
+  const statSR      = $('statSR');
+  const statCh      = $('statCh');
+
+  const playhead    = $('playhead');
+  const seekbar     = $('seekbar');
+  const seekFill    = $('seekFill');
+  const seekThumb   = $('seekThumb');
+
+  const playBtn     = $('playBtn');
+  const pauseBtn    = $('pauseBtn');
+  const stopBtn     = $('stopBtn');
+  const timeCurrent = $('timeCurrent');
+  const timeTotal   = $('timeTotal');
+
+  const discoBar    = $('discoBar');
+  const discoToggle = $('discoToggle');
+  const toggleText  = $('toggleText');
+  const calPanel    = $('calPanel');
+  const calBPM      = $('calBPM');
+  const calBPM2     = $('calBPM2');
+  const calLag      = $('calLag');
+  const copyBPMBtn  = $('copyBPM');
+  const copyBPM2Btn = $('copyBPM2');
+  const copyLagBtn  = $('copyLag');
+
+  const zoomInBtn   = $('zoomInBtn');
+  const zoomOutBtn  = $('zoomOutBtn');
+  const zoomFitBtn  = $('zoomFitBtn');
+  const scrollLBtn  = $('scrollLeftBtn');
+  const scrollRBtn  = $('scrollRightBtn');
+  const followBtn   = $('followBtn');
+  const zoomLabel   = $('zoomLabel');
+
+  // ── App state ───────────────────────────────────────────────────────────────
+  let lastBPM      = null;
+  let firstBeatMs  = null;
+  let discoMode    = false;
+  let seekDragging = false;
+
+  // ── Utilities ───────────────────────────────────────────────────────────────
+  const fmt = t => {
+    if (!isFinite(t) || t < 0) t = 0;
+    const m  = Math.floor(t / 60);
+    const s  = Math.floor(t % 60);
+    const ds = Math.floor((t % 1) * 10); // tenth of a second
+    return `${m}:${String(s).padStart(2,'0')}.${ds}`;
+  };
+
+  const fmtSimple = t => {
+    const m = Math.floor(t / 60);
+    const s = Math.floor(t % 60);
+    return `${m}:${String(s).padStart(2,'0')}`;
+  };
+
+  const fmtSize = b =>
+    b < 1024 ? b + ' B' :
+    b < 1048576 ? (b/1024).toFixed(1) + ' KB' :
+    (b/1048576).toFixed(2) + ' MB';
+
+  const tempoName = bpm =>
+    bpm < 60  ? 'Largo' :
+    bpm < 76  ? 'Adagio' :
+    bpm < 108 ? 'Andante' :
+    bpm < 120 ? 'Moderato' :
+    bpm < 156 ? 'Allegro' :
+    bpm < 176 ? 'Vivace' : 'Presto';
+
+  function showError(msg) {
+    clearError();
+    errorCont.innerHTML = `
+      <div class="error-banner" role="alert">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span>${msg}</span>
+      </div>`;
+  }
+  function clearError() { errorCont.innerHTML = ''; }
+
+  function setProgress(pct, label) {
+    loadBar.style.width = (pct * 100) + '%';
+    loadLabel.textContent = label;
+  }
+
+  function setTransport(playing, paused) {
+    playBtn.disabled  =  playing;
+    pauseBtn.disabled = !playing || paused;
+    stopBtn.disabled  = !playing && !paused;
+  }
+
+  // ── File handling ────────────────────────────────────────────────────────────
+  // ── File result cache ────────────────────────────────────────────────────────
+  // Two-tier cache:
+  //   Tier 1 (in-memory, session):  raw ArrayBuffer + decoded AudioBuffer.
+  //                                 Avoids re-reading & re-decoding the file
+  //                                 while the page is open.
+  //   Tier 2 (localStorage, persistent): serialised analysis result {bpm, firstBeatMs}.
+  //                                 Survives page reloads. The key is a
+  //                                 fingerprint of name + size + lastModified
+  //                                 so a different file with the same name
+  //                                 never gets a stale hit.
+  const memCache = new Map(); // fingerprint → { ab: ArrayBuffer, buf: AudioBuffer }
+
+  function fileFingerprint(file) {
+    // lastModified is ms-epoch; size in bytes — together these are unique enough.
+    return `tempo_v2__${file.name}__${file.size}__${file.lastModified}`;
+  }
+
+  function loadAnalysisCache(fp) {
+    try {
+      const raw = localStorage.getItem(fp);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      // Validate shape
+      if (typeof parsed.bpm === 'number' && typeof parsed.firstBeatMs === 'number') {
+        return parsed; // { bpm, firstBeatMs }
+      }
+    } catch (e) { /* corrupt entry — ignore */ }
+    return null;
+  }
+
+  function saveAnalysisCache(fp, bpm, firstBeatMs) {
+    try {
+      localStorage.setItem(fp, JSON.stringify({ bpm, firstBeatMs }));
+    } catch (e) {
+      // localStorage full or unavailable — silently skip, not critical.
+    }
+  }
+
+  async function handleFile(file) {
+    clearError();
+
+    const validExt  = /\.(mp3|wav)$/i.test(file.name);
+    const validMime = /^audio\/(mpeg|mp3|wav|x-wav|wave)$/i.test(file.type);
+    if (!validExt && !validMime) {
+      return showError('Unsupported format. Please upload a .mp3 or .wav file.');
+    }
+    if (file.size > 120 * 1024 * 1024) {
+      return showError('File too large (max 120 MB).');
+    }
+
+    // Tear down previous
+    AudioEngine.stop();
+    AudioEngine.reset();
+    WaveformView.stopLoop();
+    lastBPM = null; firstBeatMs = null;
+
+    // Show file info
+    fileNameEl.textContent   = file.name;
+    fileDetailEl.textContent = fmtSize(file.size);
+    dropEmpty.style.display  = 'none';
+    fileInfoEl.style.display = 'flex';
+    dropZone.classList.add('has-file');
+
+    // Show panel in loading state
+    panel.classList.add('visible');
+    loadState.style.display  = 'flex';
+    resultCont.style.display = 'none';
+    setProgress(0.02, 'Reading file…');
+
+    const fp = fileFingerprint(file);
+
+    try {
+      // ── Tier 1: in-memory hit ──────────────────────────────────────────────
+      // Both the ArrayBuffer and AudioBuffer are already in memory — the user
+      // dropped the same file again during this session without reloading.
+      let buf;
+      let cached = memCache.get(fp);
+
+      if (cached?.buf) {
+        setProgress(0.85, 'Restoring from memory…');
+        await new Promise(r => setTimeout(r, 0));
+        buf = cached.buf;
+        await AudioEngine.restoreBuffer(buf); // re-attach without re-decoding
+      } else {
+        // ── Read + decode (always needed if not in memory) ───────────────────
+        const ab = await file.arrayBuffer();
+        setProgress(0.12, 'Decoding audio…');
+
+        buf = await AudioEngine.decode(ab);
+        setProgress(0.30, 'Building waveform…');
+
+        // Store both in memory cache for this session
+        memCache.set(fp, { ab, buf });
+      }
+
+      await new Promise(r => setTimeout(r, 0));
+      WaveformView.buildMipmap(buf);
+
+      // ── Tier 2: analysis cache hit (localStorage) ─────────────────────────
+      // The expensive part is the two offline render passes + histogram.
+      // If we've seen this exact file before (same name + size + mtime),
+      // skip straight to showResults.
+      const analysisHit = loadAnalysisCache(fp);
+
+      let bpm, offset;
+      if (analysisHit) {
+        setProgress(1.0, 'Loaded from cache ✓');
+        await new Promise(r => setTimeout(r, 30)); // brief pause so label reads
+        bpm    = analysisHit.bpm;
+        offset = analysisHit.firstBeatMs;
+      } else {
+        setProgress(0.35, 'Analyzing tempo…');
+        await new Promise(r => setTimeout(r, 0));
+        ({ bpm, firstBeatMs: offset } = await AudioEngine.analyze(
+          (pct, label) => setProgress(0.35 + pct * 0.63, label)
+        ));
+        // Persist for future page loads
+        saveAnalysisCache(fp, bpm, offset);
+      }
+
+      lastBPM     = bpm;
+      firstBeatMs = offset;
+
+      showResults(bpm, offset, buf);
+    } catch (err) {
+      console.error(err);
+      showError('Could not decode this file. It may be corrupted or use an unsupported codec.');
+      panel.classList.remove('visible');
+      resetDropZone();
+    }
+  }
+
+  function resetDropZone() {
+    dropEmpty.style.display = '';
+    fileInfoEl.style.display = 'none';
+    dropZone.classList.remove('has-file');
+    fileInput.value = '';
+  }
+
+  function showResults(bpm, offsetMs, buf) {
+    loadState.style.display  = 'none';
+    resultCont.style.display = 'block';
+
+    // Stats
+    statBPM.textContent      = bpm.toFixed(1);
+    statTempo.textContent    = tempoName(bpm);
+    statDuration.textContent = fmtSimple(buf.duration);
+    statMeta.textContent     = `${buf.duration.toFixed(1)}s`;
+    statOffset.textContent   = Math.round(offsetMs);
+    statOffSec.textContent   = (offsetMs / 1000).toFixed(3) + 's';
+    statSR.textContent       = (buf.sampleRate / 1000).toFixed(1);
+    statCh.textContent       = buf.numberOfChannels === 1 ? 'Mono' : 'Stereo';
+
+    // Total time readout
+    timeTotal.textContent  = fmt(buf.duration);
+    timeCurrent.textContent = fmt(0);
+
+    // Calibration
+    calBPM.textContent  = bpm.toFixed(1);
+    calBPM2.textContent = (bpm * 2).toFixed(1);
+    calLag.textContent  = Math.round(offsetMs);
+
+    // If disco mode was already on, show cal panel
+    calPanel.classList.toggle('open', discoMode);
+
+    // Init canvas size + draw static waveform
+    WaveformView.resize();
+    WaveformView.setDisco(discoMode, bpm, offsetMs);
+
+    // Start the rAF loop (it draws even when paused — smooth scrubbing)
+    WaveformView.startLoop(() => ({
+      isPlaying:   AudioEngine.isPlaying(),
+      currentTime: AudioEngine.currentTime(),
+      liveData:    AudioEngine.isPlaying() ? AudioEngine.getTimeDomain() : null,
+    }));
+
+    // Update zoom label
+    updateZoomLabel();
+
+    // Transport reset
+    setTransport(false, false);
+    seekFill.style.width = '0%';
+    seekThumb.style.left = '0%';
+  }
+
+  function updateZoomLabel() {
+    zoomLabel.textContent = WaveformView.getZoomLabel();
+  }
+
+  // ── Playhead overlay update (called on rAF) ──────────────────────────────────
+  // The playhead is a CSS div positioned via left% — much cheaper than canvas.
+  function updatePlayheadOverlay() {
+    const buf = AudioEngine.getBuffer();
+    if (!buf || (!AudioEngine.isPlaying() && !AudioEngine.isPaused())) {
+      playhead.classList.remove('visible');
+      return;
+    }
+    const t = AudioEngine.currentTime();
+    const x = WaveformView.timeToX(t);
+    const w = document.getElementById('canvasWrap').clientWidth;
+    if (x >= 0 && x <= w) {
+      playhead.style.left = x + 'px';
+      playhead.classList.add('visible');
+    } else {
+      playhead.classList.remove('visible');
+    }
+    // Update seek bar
+    const pct = (t / buf.duration) * 100;
+    seekFill.style.width  = pct + '%';
+    seekThumb.style.left  = pct + '%';
+    timeCurrent.textContent = fmt(t);
+    updateZoomLabel();
+    requestAnimationFrame(updatePlayheadOverlay);
+  }
+
+  // ── Transport events ─────────────────────────────────────────────────────────
+  function doPlay() {
+    AudioEngine.play(() => { setTransport(false, false); });
+    setTransport(true, false);
+    requestAnimationFrame(updatePlayheadOverlay);
+  }
+  function doPause() {
+    AudioEngine.pause();
+    setTransport(false, true);
+  }
+  function doStop() {
+    AudioEngine.stop();
+    setTransport(false, false);
+    timeCurrent.textContent = fmt(0);
+    seekFill.style.width = '0%';
+    seekThumb.style.left = '0%';
+    playhead.classList.remove('visible');
+  }
+
+  playBtn.addEventListener('click',  doPlay);
+  pauseBtn.addEventListener('click', doPause);
+  stopBtn.addEventListener('click',  doStop);
+
+  document.addEventListener('keydown', e => {
+    if (!AudioEngine.getBuffer()) return;
+    if (document.activeElement.tagName === 'INPUT') return;
+    if (e.code === 'Space')     { e.preventDefault(); AudioEngine.isPlaying() ? doPause() : doPlay(); }
+    if (e.key  === '+')         { WaveformView.zoomIn();  updateZoomLabel(); }
+    if (e.key  === '-')         { WaveformView.zoomOut(); updateZoomLabel(); }
+    if (e.key  === 'ArrowLeft') { WaveformView.panLeft();  }
+    if (e.key  === 'ArrowRight'){ WaveformView.panRight(); }
+  });
+
+  // ── Seek bar ─────────────────────────────────────────────────────────────────
+  function seekTo(e) {
+    const buf = AudioEngine.getBuffer();
+    if (!buf) return;
+    const rect  = seekbar.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const t     = ratio * buf.duration;
+    const wasPlaying = AudioEngine.seekTo(t);
+    timeCurrent.textContent = fmt(t);
+    seekFill.style.width    = (ratio * 100) + '%';
+    seekThumb.style.left    = (ratio * 100) + '%';
+    if (wasPlaying) { doPlay(); }
+  }
+  seekbar.addEventListener('mousedown', e => { seekDragging = true; seekTo(e); });
+  document.addEventListener('mousemove', e => { if (seekDragging) seekTo(e); });
+  document.addEventListener('mouseup',   e => { if (seekDragging) { seekDragging = false; seekTo(e); } });
+
+  // ── Canvas interactions ───────────────────────────────────────────────────────
+  // Click on canvas = seek to that time (at current zoom/pan)
+  WaveformView.canvas.addEventListener('click', e => {
+    const buf = AudioEngine.getBuffer();
+    if (!buf) return;
+    const t = WaveformView.canvasToTime(e);
+    const wasPlaying = AudioEngine.seekTo(t);
+    timeCurrent.textContent = fmt(t);
+    const pct = (t / buf.duration) * 100;
+    seekFill.style.width = pct + '%';
+    seekThumb.style.left = pct + '%';
+    if (wasPlaying) doPlay();
+  });
+
+  // Wheel on canvas = zoom
+  WaveformView.canvas.addEventListener('wheel', e => {
+    WaveformView.onWheel(e);
+    updateZoomLabel();
+  }, { passive: false });
+
+  // Touch drag on canvas = pan
+  let touchStartX   = null;
+  let touchStartPan = null;
+  WaveformView.canvas.addEventListener('touchstart', e => {
+    touchStartX   = e.touches[0].clientX;
+    touchStartPan = WaveformView.panSec;
+  }, { passive: true });
+  WaveformView.canvas.addEventListener('touchmove', e => {
+    if (touchStartX === null) return;
+    const buf = AudioEngine.getBuffer();
+    if (!buf) return;
+    const dx    = e.touches[0].clientX - touchStartX;
+    const w     = WaveformView.canvas.clientWidth;
+    // Estimate visible seconds from zoom label  (e.g. "4.3×" → duration/4.3)
+    const zoom  = parseFloat(WaveformView.getZoomLabel()) || 1;
+    const visSec = buf.duration / zoom;
+    const dtSec  = -(dx / w) * visSec;
+    WaveformView.panSec = touchStartPan + dtSec;
+    WaveformView.clampPan();
+  }, { passive: true });
+
+  // Mouse drag on canvas = pan (hold and drag)
+  let mouseDragStart = null;
+  let mouseDragPan   = null;
+  let isDragging     = false;
+
+  WaveformView.canvas.addEventListener('mousedown', e => {
+    mouseDragStart = e.clientX;
+    mouseDragPan   = WaveformView.panSec;
+  });
+  document.addEventListener('mousemove', e => {
+    if (mouseDragStart === null || seekDragging) return;
+    const dx = e.clientX - mouseDragStart;
+    if (Math.abs(dx) > 4) isDragging = true;
+    if (!isDragging) return;
+    const buf = AudioEngine.getBuffer();
+    if (!buf) return;
+    const w     = WaveformView.canvas.clientWidth;
+    const zoom  = parseFloat(WaveformView.getZoomLabel()) || 1;
+    const visSec = buf.duration / zoom;
+    WaveformView.panSec = mouseDragPan - (dx / w) * visSec;
+    WaveformView.clampPan();
+  });
+  document.addEventListener('mouseup', () => {
+    mouseDragStart = null; isDragging = false;
+  });
+
+  // ── Zoom / pan buttons ────────────────────────────────────────────────────────
+  zoomInBtn.addEventListener('click',  () => { WaveformView.zoomIn();  updateZoomLabel(); });
+  zoomOutBtn.addEventListener('click', () => { WaveformView.zoomOut(); updateZoomLabel(); });
+  zoomFitBtn.addEventListener('click', () => { WaveformView.zoomFit(); updateZoomLabel(); });
+  scrollLBtn.addEventListener('click', () => WaveformView.panLeft());
+  scrollRBtn.addEventListener('click', () => WaveformView.panRight());
+  followBtn.addEventListener('click',  () => {
+    const f = !WaveformView.getFollowPlay();
+    WaveformView.setFollow(f);
+    followBtn.style.color        = f ? getCSSVar('--accent') : '';
+    followBtn.style.borderColor  = f ? getCSSVar('--accent-border') : '';
+    followBtn.textContent        = f ? 'Follow ●' : 'Follow';
+  });
+
+  // ── Dead As Disco ─────────────────────────────────────────────────────────────
+  discoToggle.addEventListener('change', () => {
+    discoMode = discoToggle.checked;
+    toggleText.textContent = discoMode ? 'On' : 'Off';
+    discoBar.classList.toggle('on', discoMode);
+    calPanel.classList.toggle('open', discoMode && lastBPM !== null);
+    WaveformView.setDisco(discoMode, lastBPM, firstBeatMs);
+  });
+
+  function flashCopy(btn, text) {
+    try { navigator.clipboard.writeText(text); } catch(e) {}
+    const orig = btn.textContent;
+    btn.textContent = 'Copied';
+    btn.classList.add('done');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('done'); }, 1800);
+  }
+  copyBPMBtn.addEventListener('click',  () => { if (lastBPM) flashCopy(copyBPMBtn, lastBPM.toFixed(1)); });
+  copyBPM2Btn.addEventListener('click', () => { if (lastBPM) flashCopy(copyBPM2Btn, (lastBPM * 2).toFixed(1)); });
+  copyLagBtn.addEventListener('click',  () => { if (firstBeatMs !== null) flashCopy(copyLagBtn, String(Math.round(firstBeatMs))); });
+
+  // ── Drop zone events ──────────────────────────────────────────────────────────
+  ['dragenter','dragover'].forEach(evt =>
+    dropZone.addEventListener(evt, e => {
+      e.preventDefault(); e.stopPropagation();
+      dropZone.classList.add('drag-over');
+    }));
+  ['dragleave','drop'].forEach(evt =>
+    dropZone.addEventListener(evt, e => {
+      e.preventDefault(); e.stopPropagation();
+      dropZone.classList.remove('drag-over');
+    }));
+
+  dropZone.addEventListener('drop', e => {
+    const f = e.dataTransfer?.files?.[0];
+    if (f) handleFile(f);
+  });
+  dropZone.addEventListener('click', e => {
+    if (e.target.closest('#replaceBtn') || e.target.closest('.file-info')) return;
+    fileInput.click();
+  });
+  fileInput.addEventListener('change', e => {
+    if (e.target.files?.[0]) handleFile(e.target.files[0]);
+  });
+  replaceBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    AudioEngine.stop();
+    WaveformView.stopLoop();
+    resetDropZone();
+    panel.classList.remove('visible');
+    fileInput.value = '';
+    fileInput.click();
+  });
+
+  // ── Init ──────────────────────────────────────────────────────────────────────
+  WaveformView.resize();
+  // Style Follow button as active by default
+  followBtn.style.color       = getCSSVar('--accent');
+  followBtn.style.borderColor = getCSSVar('--accent-border');
+  followBtn.textContent       = 'Follow ●';
+
+})();
+
+/* ── Utility: read CSS custom property ──────────────────────────────────────── */
+function getCSSVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+/* ── Utility: time format for ruler ticks ────────────────────────────────────── */
+function formatTimePrecise(t) {
+  if (t < 60) return t.toFixed(t < 1 ? 2 : (t < 10 ? 1 : 0)) + 's';
+  const m = Math.floor(t / 60);
+  const s = Math.floor(t % 60);
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+</script>
+</body>
+</html>
